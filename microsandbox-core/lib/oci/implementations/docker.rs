@@ -10,7 +10,7 @@ use futures::{future, stream::BoxStream, StreamExt};
 use getset::{Getters, Setters};
 use microsandbox_utils::{env, EXTRACTED_LAYER_SUFFIX, LAYERS_SUBDIR};
 use oci_spec::image::{Digest, ImageConfiguration, ImageIndex, ImageManifest, Os, Platform};
-use reqwest::Client;
+use reqwest::{Client,Proxy};
 use reqwest_middleware::{ClientBuilder, ClientWithMiddleware};
 use reqwest_retry::{policies::ExponentialBackoff, RetryTransientMiddleware};
 use serde::{Deserialize, Serialize};
@@ -154,7 +154,21 @@ impl DockerRegistry {
         oci_db_path: impl AsRef<Path>,
     ) -> MicrosandboxResult<Self> {
         let retry_policy = ExponentialBackoff::builder().build_with_max_retries(3);
-        let client_builder = ClientBuilder::new(Client::new());
+        let inner = {
+            let mut builder = Client::builder();
+
+            // 方式一：从自定义环境变量设置代理（若存在则强制覆盖）
+            if let Ok(proxy_url) = std::env::var("MICROSANDBOX_HTTP_PROXY") {
+                tracing::info!("代理的地址: {}", proxy_url);
+                // 支持 http/https/socks5/socks5h，例如：http://127.0.0.1:7890 或 socks5h://127.0.0.1:1080
+                builder = builder.proxy(Proxy::all(proxy_url)?);
+            }
+            // 方式二：不设置则保持默认行为，reqwest 会读取系统环境变量：
+            // HTTP_PROXY / HTTPS_PROXY / ALL_PROXY / NO_PROXY
+
+            builder.build()?
+        };
+        let client_builder = ClientBuilder::new(inner);
         let client = client_builder
             .with(RetryTransientMiddleware::new_with_policy(retry_policy))
             .build();

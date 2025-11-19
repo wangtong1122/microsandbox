@@ -259,7 +259,7 @@ pub async fn forward_rpc_to_portal(
     let client = reqwest::Client::new();
 
     // Configure connection retry parameters
-    const MAX_RETRIES: u32 = 10_000;
+    const MAX_RETRIES: u32 = 3;
     const TIMEOUT_MS: u64 = 50;
 
     // Try to establish a connection to the portal before sending the actual request

@@ -88,6 +88,7 @@ async fn main() -> Result<()> {
 
     // Resolve the server address
     let port = args.port.unwrap_or(DEFAULT_PORTAL_GUEST_PORT);
+    tracing::info!("porta的 启动 Listening on port {}", port);
     let addr = format!("{}:{}", DEFAULT_HOST, port)
         .parse::<SocketAddr>()
         .unwrap();
@@ -114,7 +115,7 @@ async fn main() -> Result<()> {
 
     // Create the router
     let app = create_router(state);
-
+    tracing::info!("我启动了");
     // Clone for shutdown
     let engine_handle_clone = engine_handle_for_shutdown.lock().await.clone();
 

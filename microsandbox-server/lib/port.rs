@@ -30,7 +30,7 @@ use crate::{MicrosandboxServerError, MicrosandboxServerResult};
 //--------------------------------------------------------------------------------------------------
 
 /// The localhost IP address used for all portal connections
-pub const LOCALHOST_IP: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
+pub const LOCALHOST_IP: IpAddr = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 
 /// Lock to ensure only one thread gets a port at a time
 static PORT_ASSIGNMENT_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
@@ -266,7 +266,7 @@ impl PortManager {
 
     /// Verify that a port is still available (not bound by something else)
     fn verify_port_availability(&self, port: u16) -> bool {
-        let addr = SocketAddr::new(LOCALHOST_IP, port);
+        let addr = SocketAddr::new(LOCALHOST_IP, 4444);
         match TcpListener::bind(addr) {
             Ok(_) => true,   // We could bind, so it's available
             Err(_) => false, // We couldn't bind, so it's not available

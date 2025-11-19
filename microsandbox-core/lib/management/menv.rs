@@ -71,7 +71,9 @@ pub async fn initialize(project_dir: Option<PathBuf>) -> MicrosandboxResult<()> 
     fs::create_dir_all(&menv_path).await?;
 
     // Create the required files for the microsandbox environment
+    tracing::info!("开始创建 microsandbox 环境文件");
     ensure_menv_files(&menv_path).await?;
+    tracing::info!("microsandbox 环境文件创建完成");
 
     // Create default config file if it doesn't exist
     create_default_config(&project_dir).await?;

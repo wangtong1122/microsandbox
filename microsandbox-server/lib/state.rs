@@ -61,7 +61,7 @@ impl AppState {
         let key = format!("{}/{}", namespace, sandbox_name);
 
         if let Some(port) = port_manager.get_port(&key) {
-            Ok(format!("http://{}:{}", LOCALHOST_IP, 8818))
+            Ok(format!("http://{}:{}", LOCALHOST_IP, port))
         } else {
             Err(ServerError::InternalError(format!(
                 "No portal port assigned for sandbox {}",

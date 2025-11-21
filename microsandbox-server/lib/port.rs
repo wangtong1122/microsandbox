@@ -266,7 +266,7 @@ impl PortManager {
 
     /// Verify that a port is still available (not bound by something else)
     fn verify_port_availability(&self, port: u16) -> bool {
-        let addr = SocketAddr::new(LOCALHOST_IP, 4444);
+        let addr = SocketAddr::new(LOCALHOST_IP, port);
         match TcpListener::bind(addr) {
             Ok(_) => true,   // We could bind, so it's available
             Err(_) => false, // We couldn't bind, so it's not available

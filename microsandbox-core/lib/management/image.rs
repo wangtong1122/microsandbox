@@ -19,7 +19,8 @@ use microsandbox_utils::term::{self, MULTI_PROGRESS};
 use microsandbox_utils::{env, EXTRACTED_LAYER_SUFFIX, LAYERS_SUBDIR, OCI_DB_FILENAME};
 use sqlx::{Pool, Sqlite};
 use std::ffi::CStr;
-use std::io::Read;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 #[cfg(feature = "cli")]
 use std::io::Result as IoResult;
 use std::path::{Path, PathBuf};
@@ -537,6 +538,23 @@ fn set_stat_xattr(
     Ok(())
 }
 
+fn open_layer_file(path: &Path, layer_name: &str) -> MicrosandboxResult<(File, bool)> {
+    let mut file = File::open(path).map_err(|e| MicrosandboxError::LayerHandling {
+        source: e,
+        layer: layer_name.to_string(),
+    })?;
+    let mut magic = [0u8; 2];
+    let read = file.read(&mut magic).map_err(|e| MicrosandboxError::LayerHandling {
+        source: e,
+        layer: layer_name.to_string(),
+    })?;
+    file.seek(SeekFrom::Start(0)).map_err(|e| MicrosandboxError::LayerHandling {
+        source: e,
+        layer: layer_name.to_string(),
+    })?;
+    Ok((file, read == 2 && magic == [0x1F, 0x8B]))
+}
+
 /// Extracts a layer from the downloaded tar.gz file into an extracted directory.
 /// The extracted directory will be named as <layer-name>.extracted
 /// Custom extraction function that modifies file ownership during extraction
@@ -742,7 +760,8 @@ async fn extract_layer(
         .ok_or_else(|| MicrosandboxError::LayerHandling {
             source: std::io::Error::new(std::io::ErrorKind::NotFound, "invalid layer file name"),
             layer: layer_path.display().to_string(),
-        })?;
+        })?
+        .to_string();
 
     // Create the extraction directory with name <layer-name>.extracted
     let extract_dir = extract_base_dir
@@ -757,7 +776,7 @@ async fn extract_layer(
                 .await
                 .map_err(|e| MicrosandboxError::LayerHandling {
                     source: e,
-                    layer: file_name.to_string(),
+                    layer: file_name.clone(),
                 })?;
 
         if read_dir.next_entry().await?.is_some() {
@@ -774,7 +793,7 @@ async fn extract_layer(
         .await
         .map_err(|e| MicrosandboxError::LayerHandling {
             source: e,
-            layer: file_name.to_string(),
+            layer: file_name.clone(),
         })?;
 
     tracing::info!(
@@ -821,16 +840,22 @@ async fn extract_layer(
         let layer_path_clone = layer_path.to_path_buf();
         let extract_dir_clone = extract_dir.clone();
         let pb_clone = pb.clone();
+        let file_name_clone = file_name.clone();
 
         spawn_blocking(move || -> MicrosandboxResult<()> {
-            let file = std::fs::File::open(&layer_path_clone)?;
+            let (file, is_gzip) = open_layer_file(&layer_path_clone, &file_name_clone)?;
             let reader = ProgressReader {
                 inner: file,
                 bar: pb_clone.clone(),
             };
-            let decoder = GzDecoder::new(reader);
-            let mut archive = Archive::new(decoder);
-            extract_tar_with_ownership_override(&mut archive, &extract_dir_clone)?;
+            if is_gzip {
+                let decoder = GzDecoder::new(reader);
+                let mut archive = Archive::new(decoder);
+                extract_tar_with_ownership_override(&mut archive, &extract_dir_clone)?;
+            } else {
+                let mut archive = Archive::new(reader);
+                extract_tar_with_ownership_override(&mut archive, &extract_dir_clone)?;
+            }
             Ok(())
         })
         .await
@@ -843,14 +868,15 @@ async fn extract_layer(
     {
         use flate2::read::GzDecoder;
 
-        let file =
-            std::fs::File::open(layer_path).map_err(|e| MicrosandboxError::LayerHandling {
-                source: e,
-                layer: file_name.to_string(),
-            })?;
-        let decoder = GzDecoder::new(file);
-        let mut archive = Archive::new(decoder);
-        extract_tar_with_ownership_override(&mut archive, &extract_dir)?;
+        let (file, is_gzip) = open_layer_file(layer_path, &file_name)?;
+        if is_gzip {
+            let decoder = GzDecoder::new(file);
+            let mut archive = Archive::new(decoder);
+            extract_tar_with_ownership_override(&mut archive, &extract_dir)?;
+        } else {
+            let mut archive = Archive::new(file);
+            extract_tar_with_ownership_override(&mut archive, &extract_dir)?;
+        }
     }
 
     tracing::info!(
@@ -888,7 +914,63 @@ async fn collect_layer_files(dir: impl AsRef<Path>) -> MicrosandboxResult<Vec<Pa
 #[cfg(test)]
 mod tests {
     use super::*;
+    use flate2::{write::GzEncoder, Compression};
+    use std::io::{Cursor, Write};
+    use tar::Builder;
     use tempfile::TempDir;
+
+    fn write_test_layer_blob(path: &Path, gzip: bool) -> MicrosandboxResult<()> {
+        let mut builder = Builder::new(Vec::new());
+        let payload = b"hello-layer";
+        let mut header = tar::Header::new_gnu();
+        header.set_size(payload.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder.append_data(&mut header, "hello.txt", &mut Cursor::new(&payload[..]))?;
+        builder.finish()?;
+        let tar_bytes = builder.into_inner()?;
+        let bytes = if gzip {
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+            encoder.write_all(&tar_bytes)?;
+            encoder.finish()?
+        } else {
+            tar_bytes
+        };
+        std::fs::write(path, bytes)?;
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn extract_layer_handles_plain_tar() -> MicrosandboxResult<()> {
+        let temp_dir = TempDir::new()?;
+        let layer_path = temp_dir.path().join("sha256:test_plain");
+        write_test_layer_blob(&layer_path, false)?;
+        let extract_base = temp_dir.path().join("layers");
+        extract_layer(&layer_path, &extract_base).await?;
+        let extracted = extract_base.join(format!(
+            "{}.{}",
+            "sha256:test_plain",
+            EXTRACTED_LAYER_SUFFIX
+        ));
+        assert!(extracted.join("hello.txt").exists());
+        Ok(())
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn extract_layer_handles_gzipped_tar() -> MicrosandboxResult<()> {
+        let temp_dir = TempDir::new()?;
+        let layer_path = temp_dir.path().join("sha256:test_gz");
+        write_test_layer_blob(&layer_path, true)?;
+        let extract_base = temp_dir.path().join("layers");
+        extract_layer(&layer_path, &extract_base).await?;
+        let extracted = extract_base.join(format!(
+            "{}.{}",
+            "sha256:test_gz",
+            EXTRACTED_LAYER_SUFFIX
+        ));
+        assert!(extracted.join("hello.txt").exists());
+        Ok(())
+    }
 
     #[test_log::test(tokio::test)]
     #[ignore = "makes network requests to Docker registry to pull an image"]

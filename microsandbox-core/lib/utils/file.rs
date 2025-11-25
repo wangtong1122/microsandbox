@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use oci_spec::image::DigestAlgorithm;
+use oci_spec::image::{DescriptorBuilder, Digest as OciDigest, DigestAlgorithm};
 use sha2::{Digest, Sha256, Sha384, Sha512};
 use tokio::{fs::File, io::AsyncReadExt};
 
@@ -34,4 +34,31 @@ pub async fn get_file_hash(
     };
 
     Ok(hash)
+}
+
+/// Reads a file and returns both its digest string (sha256) and size in bytes.
+pub async fn digest_and_size_from_path(
+    path: &Path,
+) -> MicrosandboxResult<(String, u64)> {
+    let size = tokio::fs::metadata(path).await?.len();
+    let digest = get_file_hash(path, &DigestAlgorithm::Sha256).await?;
+    Ok((format!("sha256:{}", hex::encode(digest)), size))
+}
+
+/// Build a descriptor for an already-known digest/size pair。
+pub fn descriptor_from_digest(
+    digest: &str,
+    size: u64,
+    media_type: &str,
+) -> MicrosandboxResult<oci_spec::image::Descriptor> {
+    let digest = OciDigest::try_from(digest.to_string())
+        .map_err(|e| MicrosandboxError::from(anyhow::Error::new(e)))?;
+    Ok(
+        DescriptorBuilder::default()
+            .media_type(media_type)
+            .digest(digest)
+            .size(size)
+            .build()
+            .map_err(|e| MicrosandboxError::from(anyhow::Error::new(e)))?,
+    )
 }

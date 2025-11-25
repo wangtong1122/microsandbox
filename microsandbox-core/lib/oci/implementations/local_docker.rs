@@ -106,7 +106,7 @@ impl OciRegistryPull for LocalDockerRegistry {
         selector: ReferenceSelector,
     ) -> MicrosandboxResult<()> {
         tracing::info!("Pulling image本地的 {}", repository);
-        // Compose the Docker CLI reference, which usually matches `<repository>:<tag>`
+        // Compose the Docker CLI reference, which usually matches `registry/<repository>:<tag>`
         let reference = match &selector {
             ReferenceSelector::Tag { tag, .. } => format!("{repository}:{tag}"),
             ReferenceSelector::Digest(digest) => {
@@ -199,7 +199,9 @@ impl OciRegistryPull for LocalDockerRegistry {
         }
 
         // Update image total size now that we know it.
-        db::save_or_update_image(&self.oci_db, &reference, total_size).await?;
+        // reference前要加registry地址docker.io/
+        let db_reference = format!("docker.io/{}", reference);
+        db::save_or_update_image(&self.oci_db, &db_reference, total_size).await?;
 
         Ok(())
     }

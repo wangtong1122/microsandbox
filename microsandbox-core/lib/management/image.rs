@@ -6,7 +6,7 @@
 
 use crate::{
     management::db::{self, OCI_DB_MIGRATOR},
-    oci::{DockerRegistry, Ghcr, LocalDockerRegistry, OciRegistryPull, Reference},
+    oci::{DockerRegistry, Ghcr, LocalDockerRegistry, OciRegistryPull, Reference, ReferenceDbExt},
     MicrosandboxError, MicrosandboxResult,
 };
 #[cfg(feature = "cli")]
@@ -398,16 +398,22 @@ async fn check_image_layers(
     layers_dir: impl AsRef<Path>,
 ) -> MicrosandboxResult<bool> {
     let layers_dir = layers_dir.as_ref();
-
+    // Normalize reference to match how it's stored in the DB (e.g., with default registry prefix)
+    let normalized_ref = image.to_db_reference();
+    tracing::info!(
+        "检查镜像是否存在{}, 规范化后的引用为{}",
+        image.to_string(),
+        normalized_ref
+    );
     // Check if the image exists in the database
-    match db::image_exists(pool, &image.to_string()).await {
+    match db::image_exists(pool, &normalized_ref).await {
         Ok(true) => {
             // Image exists, get all layer digests for this image
-            match db::get_image_layer_digests(pool, &image.to_string()).await {
+            match db::get_image_layer_digests(pool, &normalized_ref).await {
                 Ok(layer_digests) => {
                     tracing::info!("layer_digests: {:?}", layer_digests);
                     if layer_digests.is_empty() {
-                        tracing::warn!("no layers found for image {}", image);
+                        tracing::warn!("no layers found for image {}", normalized_ref);
                         return Ok(false);
                     }
 
@@ -436,26 +442,41 @@ async fn check_image_layers(
                     if db_layers.len() < layer_digests.len() {
                         tracing::warn!(
                             "some layers for image {} exist on disk but missing in db",
-                            image
+                            normalized_ref
                         );
                         return Ok(false);
                     }
 
-                    tracing::info!("all layers for image {} exist and are valid", image);
+                    tracing::info!(
+                        "all layers for image {} exist and are valid",
+                        normalized_ref
+                    );
                     Ok(true)
                 }
                 Err(e) => {
-                    tracing::warn!("error checking layer digests: {}, will pull image", e);
+                    tracing::warn!(
+                        "error checking layer digests for {}: {}, will pull image",
+                        normalized_ref,
+                        e
+                    );
                     Ok(false)
                 }
             }
         }
         Ok(false) => {
-            tracing::warn!("image {} does not exist in db, will pull image", image);
+            tracing::warn!(
+                "image {} does not exist in db (normalized from {}), will pull image",
+                normalized_ref,
+                image
+            );
             Ok(false)
         }
         Err(e) => {
-            tracing::warn!("error checking image existence: {}, will pull image", e);
+            tracing::warn!(
+                "error checking image existence for {}: {}, will pull image",
+                normalized_ref,
+                e
+            );
             Ok(false)
         }
     }

@@ -182,6 +182,18 @@ impl TryFrom<String> for Reference {
     }
 }
 
+impl Reference {
+    /// Returns the normalized reference string used for database storage/lookups.
+    ///
+    /// This is currently equivalent to `self.to_string()`, but is provided as a
+    /// semantic helper so that call sites clearly distinguish between a user
+    /// provided reference and the canonical DB key (which includes the
+    /// registry, e.g. `docker.io/...`).
+    pub fn to_db_reference(&self) -> String {
+        self.to_string()
+    }
+}
+
 //--------------------------------------------------------------------------------------------------
 // Functions
 //--------------------------------------------------------------------------------------------------
@@ -580,7 +592,7 @@ mod tests {
                 assert_eq!(tag, "1.0");
                 assert!(digest.is_none());
             }
-            _ => panic!("Expected Tag variant"),
+            _ => panic!("Expected Tag variant without digest"),
         }
         assert_eq!(reference.to_string(), "docker.io/a/b/c:1.0");
     }
@@ -679,5 +691,15 @@ mod tests {
         let s = format!("docker.io/library/alpine:{}", long_tag);
         let err = s.parse::<Reference>().unwrap_err();
         assert!(err.to_string().contains("invalid tag"));
+    }
+}
+
+pub trait ReferenceDbExt {
+    fn to_db_reference(&self) -> String;
+}
+
+impl ReferenceDbExt for Reference {
+    fn to_db_reference(&self) -> String {
+        self.to_string()
     }
 }

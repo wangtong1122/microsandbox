@@ -25,7 +25,7 @@ use crate::{
         EnvPair, Microsandbox, PathPair, PortPair, ReferenceOrPath, Sandbox, START_SCRIPT_NAME,
     },
     management::{config, db, image, menv, rootfs},
-    oci::Reference,
+    oci::{Reference, ReferenceDbExt},
     vm::Rootfs,
     MicrosandboxError, MicrosandboxResult,
 };
@@ -561,7 +561,9 @@ async fn setup_image_rootfs(
     }
 
     // Get the layers for the image
-    let digests = db::get_image_layer_digests(&pool, &image.to_string()).await?;
+    let db_reference = image.to_db_reference();
+    let digests = db::get_image_layer_digests(&pool, &db_reference).await?;
+    tracing::info!("获取image:{},(db_reference:{})的digests列表: {:?}", image.to_string(), db_reference, digests);
     let layers = db::get_layers_by_digest(&pool, &digests).await?;
     tracing::info!("found {} layers for image {}", layers.len(), image);
 

@@ -269,7 +269,7 @@ pub async fn pull_from_docker_registry(
                 .await?;
         }
     }
-
+    tracing::info!("image的download_dir{}",download_dir.display());
     // Find and extract layers in parallel
     let layer_paths = collect_layer_files(download_dir).await?;
 

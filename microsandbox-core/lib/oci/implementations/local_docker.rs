@@ -130,13 +130,27 @@ impl OciRegistryPull for LocalDockerRegistry {
         // Synthetic minimal index/manifest since callers usually care about DB + layers.
         let image_id = db::save_or_update_image(&self.oci_db, &reference, 0).await?;
         tracing::info!("读取的image_id: {}",image_id);
-        let index = ImageIndex::from_reader(std::io::Cursor::new(b"{}" as &[u8]))
-            .map_err(|e| MicrosandboxError::from(anyhow::Error::new(e)))?;
+        // Build a minimal synthetic OCI index and manifest just to satisfy the DB schema.
+        let mut index = ImageIndex::default();
+        index.set_schema_version(2);
         tracing::info!("读取的index{}",serde_json::to_string_pretty(&index).unwrap());
         let index_id = db::save_index(&self.oci_db, image_id, &index, None).await?;
         tracing::info!("读取的index_id: {}",index_id);
-        let manifest = ImageManifest::from_reader(std::io::Cursor::new(b"{}" as &[u8]))
+
+        // Minimal dummy manifest. Use from_reader on a minimal JSON with required fields.
+        let manifest_json = br#"{
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": {
+                "mediaType": "application/vnd.oci.image.config.v1+json",
+                "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+                "size": 0
+            },
+            "layers": []
+        }"#;
+        let manifest = ImageManifest::from_reader(std::io::Cursor::new(&manifest_json[..]))
             .map_err(|e| MicrosandboxError::from(anyhow::Error::new(e)))?;
+        tracing::info!("读取的manifest{}",serde_json::to_string_pretty(&manifest).unwrap());
         let manifest_id = db::save_manifest(&self.oci_db, image_id, Some(index_id), &manifest).await?;
         tracing::info!("读取的manifest_id: {}",manifest_id);
         db::save_config(&self.oci_db, manifest_id, &config).await?;

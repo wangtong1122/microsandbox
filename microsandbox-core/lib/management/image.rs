@@ -6,7 +6,7 @@
 
 use crate::{
     management::db::{self, OCI_DB_MIGRATOR},
-    oci::{DockerRegistry, Ghcr, OciRegistryPull, Reference},
+    oci::{DockerRegistry, Ghcr, LocalDockerRegistry, OciRegistryPull, Reference},
     MicrosandboxError, MicrosandboxResult,
 };
 #[cfg(feature = "cli")]
@@ -244,6 +244,7 @@ pub async fn pull_from_docker_registry(
     fs::create_dir_all(&layers_dir).await?;
 
     let docker_registry = DockerRegistry::new(download_dir, &db_path).await?;
+    let local_registry = LocalDockerRegistry::new(download_dir, &db_path).await?;
 
     // Get or create a connection pool to the database
     let pool = db::get_or_create_pool(&db_path, &OCI_DB_MIGRATOR).await?;
@@ -254,9 +255,20 @@ pub async fn pull_from_docker_registry(
         return Ok(());
     }
 
-    docker_registry
+    match local_registry
         .pull_image(image.get_repository(), image.get_selector().clone())
-        .await?;
+        .await
+    {
+        Ok(_) => {
+            tracing::info!("image {image} restored from local docker daemon");
+        }
+        Err(err) => {
+            tracing::info!("local image pull skipped: {err:?}");
+            docker_registry
+                .pull_image(image.get_repository(), image.get_selector().clone())
+                .await?;
+        }
+    }
 
     // Find and extract layers in parallel
     let layer_paths = collect_layer_files(download_dir).await?;

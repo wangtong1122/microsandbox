@@ -245,7 +245,7 @@ pub async fn pull_from_docker_registry(
 
     let docker_registry = DockerRegistry::new(download_dir, &db_path).await?;
     let local_registry = LocalDockerRegistry::new(download_dir, &db_path).await?;
-
+    tracing::info!("拉取{}",image);
     // Get or create a connection pool to the database
     let pool = db::get_or_create_pool(&db_path, &OCI_DB_MIGRATOR).await?;
 

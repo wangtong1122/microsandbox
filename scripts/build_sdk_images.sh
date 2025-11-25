@@ -73,7 +73,7 @@ error() {
 # Function to build a specific SDK image
 function build_sdk_image {
     local sdk=$1
-    local image_name="${sdk}"
+    local image_name="mysdimage/${sdk}"
     local dockerfile="$PROJECT_ROOT/sdk-images/${sdk}/Dockerfile"
 
     # Check if Dockerfile exists

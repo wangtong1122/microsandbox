@@ -52,7 +52,7 @@ impl LocalDockerRegistry {
     async fn export_image_to_temp_dir(&self, reference: &str) -> MicrosandboxResult<TempDir> {
         let tmp = TempDir::new()?;
         let tar_path = tmp.path().join("image.tar");
-
+        tracing::info!("解压本地的{}",tar_path.display());
         let status = std::process::Command::new("docker")
             .arg("image")
             .arg("save")
@@ -115,30 +115,34 @@ impl OciRegistryPull for LocalDockerRegistry {
         };
 
         let tmp = self.export_image_to_temp_dir(&reference).await?;
+        tracing::info!("本地的完成本地导出tmp: {}",tmp.path().display());
         let manifest_entries = Self::load_docker_manifest(&tmp)?;
+        tracing::info!("读取本地的 manifest_entries 完成 ");
         let entry = &manifest_entries[0];
 
         // Config
         let config = Self::load_image_config(&tmp, &entry.Config)?;
-
+        tracing::info!("读取config 完成 {}",serde_json::to_string_pretty(&config).unwrap());
         // Compute layer digests and sizes, and copy to layer_download_dir
         fs::create_dir_all(&self.layer_download_dir).await?;
 
         let mut total_size: i64 = 0;
-
         // Synthetic minimal index/manifest since callers usually care about DB + layers.
         let image_id = db::save_or_update_image(&self.oci_db, &reference, 0).await?;
+        tracing::info!("读取的image_id: {}",image_id);
         let index = ImageIndex::from_reader(std::io::Cursor::new(b"{}" as &[u8]))
             .map_err(|e| MicrosandboxError::from(anyhow::Error::new(e)))?;
+        tracing::info!("读取的index{}",serde_json::to_string_pretty(&index).unwrap());
         let index_id = db::save_index(&self.oci_db, image_id, &index, None).await?;
-
+        tracing::info!("读取的index_id: {}",index_id);
         let manifest = ImageManifest::from_reader(std::io::Cursor::new(b"{}" as &[u8]))
             .map_err(|e| MicrosandboxError::from(anyhow::Error::new(e)))?;
         let manifest_id = db::save_manifest(&self.oci_db, image_id, Some(index_id), &manifest).await?;
-
+        tracing::info!("读取的manifest_id: {}",manifest_id);
         db::save_config(&self.oci_db, manifest_id, &config).await?;
 
         for (idx, layer_rel) in entry.Layers.iter().enumerate() {
+            tracing::info!("开始处理 layer: {}",layer_rel);
             let src_path = tmp.path().join(layer_rel);
             let meta = std::fs::metadata(&src_path)?;
             let size = meta.len();

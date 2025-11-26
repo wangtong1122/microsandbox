@@ -246,31 +246,52 @@ pub async fn pull_from_docker_registry(
 
     let docker_registry = DockerRegistry::new(download_dir, &db_path).await?;
     let local_registry = LocalDockerRegistry::new(download_dir, &db_path).await?;
-    tracing::info!("拉取{}",image);
-    // Get or create a connection pool to the database
-    let pool = db::get_or_create_pool(&db_path, &OCI_DB_MIGRATOR).await?;
+    tracing::info!("拉取{}", image);
 
-    // Check if we need to pull the image
-    if check_image_layers(&pool, image, &layers_dir).await? {
-        tracing::info!("image {} and all its layers exist, skipping pull", image);
-        return Ok(());
+    // Check environment variable to decide whether to use local_registry or docker_registry
+    let use_local_registry =
+        std::env::var("USE_LOCAL_REGISTRY").unwrap_or_else(|_| "false".to_string()) == "true";
+
+    if use_local_registry {
+        tracing::info!("从本地docker进行镜像拉取");
+        // Use local_registry only
+        match local_registry
+            .pull_image(image.get_repository(), image.get_selector().clone())
+            .await
+        {
+            Ok(_) => {
+                tracing::info!("image {image} restored from local docker daemon");
+            }
+            Err(err) => {
+                tracing::info!("local image pull failed: {err:?}");
+                return Err(MicrosandboxError::ImageLayerDownloadFailed(format!(
+                    "Failed to pull image {image} from local registry: {err:?}",
+                    image = image
+                )));
+            }
+        }
+    } else {
+        tracing::info!("从远程拉取");
+        // Fall back to Docker registry only
+        match docker_registry
+            .pull_image(image.get_repository(), image.get_selector().clone())
+            .await
+        {
+            Ok(_) => {
+                tracing::info!("image {image} pulled from docker registry");
+            }
+            Err(err) => {
+                tracing::info!("docker registry pull failed: {err:?}");
+                return Err(MicrosandboxError::ImageLayerDownloadFailed(format!(
+                    "Failed to pull image {image} from docker registry: {err:?}",
+                    image = image
+                )));
+            }
+        }
     }
 
-    match local_registry
-        .pull_image(image.get_repository(), image.get_selector().clone())
-        .await
-    {
-        Ok(_) => {
-            tracing::info!("image {image} restored from local docker daemon");
-        }
-        Err(err) => {
-            tracing::info!("local image pull skipped: {err:?}");
-            docker_registry
-                .pull_image(image.get_repository(), image.get_selector().clone())
-                .await?;
-        }
-    }
-    tracing::info!("image的download_dir{}",download_dir.display());
+    tracing::info!("image的download_dir{}", download_dir.display());
+
     // Find and extract layers in parallel
     let layer_paths = collect_layer_files(download_dir).await?;
 

@@ -97,7 +97,15 @@ impl LocalDockerRegistry {
         Ok(cfg)
     }
 }
-
+fn normalize_repository(repo: &str) -> String {
+    // 已经包含 registry 的就直接返回，例如 `ghcr.io/...` 或 `registry.example.com/...`
+    if repo.contains('.') || repo.contains(':') || repo.starts_with("localhost/") {
+        repo.to_string()
+    } else {
+        // 没有 registry 的，统一加上默认的 `docker.io/`
+        format!("docker.io/{}", repo)
+    }
+}
 #[async_trait]
 impl OciRegistryPull for LocalDockerRegistry {
     async fn pull_image(
@@ -106,11 +114,12 @@ impl OciRegistryPull for LocalDockerRegistry {
         selector: ReferenceSelector,
     ) -> MicrosandboxResult<()> {
         tracing::info!("Pulling image本地的 {}", repository);
-        // Compose the Docker CLI reference, which usually matches `<repository>:<tag>`
+        // Compose the Docker CLI reference, which usually matches `docker.io/<repository>:<tag>`
+        let repo = normalize_repository(repository);
         let reference = match &selector {
-            ReferenceSelector::Tag { tag, .. } => format!("{repository}:{tag}"),
+            ReferenceSelector::Tag { tag, .. } => format!("{}:{}", repo, tag),
             ReferenceSelector::Digest(digest) => {
-                format!("{repository}@{}:{}", digest.algorithm(), digest.digest())
+                format!("{}@{}:{}", repo, digest.algorithm(), digest.digest())
             }
         };
 

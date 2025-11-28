@@ -123,6 +123,15 @@ impl OciRegistryPull for LocalDockerRegistry {
             }
         };
 
+        // 如果数据库中已经存在该镜像且 size_bytes > 0，则认为已经拉取完成，直接返回
+        if db::image_exists(&self.oci_db, &reference).await? {
+            tracing::info!(
+                "Image already exists in OCI DB, skip local docker pull: {}",
+                reference
+            );
+            return Ok(());
+        }
+
         let tmp = self.export_image_to_temp_dir(&reference).await?;
         tracing::info!("本地的完成本地导出tmp: {}",tmp.path().display());
         let manifest_entries = Self::load_docker_manifest(&tmp)?;

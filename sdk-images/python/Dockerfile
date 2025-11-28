@@ -1,5 +1,8 @@
 # First stage: Build the portal binary with Python feature enabled
 FROM rust:slim AS builder
+#替换为中国的镜像源
+env http_proxy "http://192.168.55.19:7890"
+env https_proxy "http://192.168.55.19:7890"
 
 # Install dependencies and build the portal binary
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -15,7 +18,8 @@ RUN cargo build --release --bin portal --features python
 
 # Second stage: Create the Python image
 FROM python:latest
-
+env http_proxy "http://192.168.55.19:7890"
+env https_proxy "http://192.168.55.19:7890"
 # Set environment variables and create user
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -50,8 +54,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         pytest \
         pytest-cov \
         requests \
-        ipython
+        ipython \
+        pandas \
+        matplotlib
 
+#重置代理
+RUN unset http_proxy && unset https_proxy
 # Copy the portal binary from the builder stage and set permissions
 COPY --from=builder /usr/src/microsandbox/target/release/portal /usr/local/bin/
 RUN chmod +x /usr/local/bin/portal

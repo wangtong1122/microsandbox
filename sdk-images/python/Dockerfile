@@ -59,7 +59,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         matplotlib
 
 #重置代理
-RUN unset http_proxy && unset https_proxy
+env http_proxy =
+env https_proxy =
 # Copy the portal binary from the builder stage and set permissions
 COPY --from=builder /usr/src/microsandbox/target/release/portal /usr/local/bin/
 RUN chmod +x /usr/local/bin/portal

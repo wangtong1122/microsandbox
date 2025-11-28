@@ -260,7 +260,7 @@ pub async fn forward_rpc_to_portal(
 
     // Configure connection retry parameters
     const MAX_RETRIES: u32 = 10_000;
-    const TIMEOUT_MS: u64 = 50;
+    const TIMEOUT_MS: u64 = 5000;
 
     // Try to establish a connection to the portal before sending the actual request
     let mut retry_count = 0;

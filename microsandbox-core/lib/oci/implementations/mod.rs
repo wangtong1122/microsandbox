@@ -1,5 +1,6 @@
 mod docker;
 mod ghcr;
+mod local_docker;
 
 //--------------------------------------------------------------------------------------------------
 // Exports
@@ -7,3 +8,4 @@ mod ghcr;
 
 pub use docker::*;
 pub use ghcr::*;
+pub use local_docker::*;

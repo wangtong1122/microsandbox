@@ -54,8 +54,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         pytest \
         pytest-cov \
         requests \
-        ipython  \
-        pandas   \
+        ipython \
+        pandas \
         matplotlib
 
 # Copy the portal binary from the builder stage and set permissions

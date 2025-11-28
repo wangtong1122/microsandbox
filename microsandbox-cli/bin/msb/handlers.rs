@@ -232,6 +232,11 @@ pub async fn exe_subcommand(
 ) -> MicrosandboxCliResult<()> {
     let (image, script) = parse_name_and_script(&name);
     let image = image.parse::<Reference>()?;
+    tracing::info!(
+    "临时 exe 参数: exec={:?}, args={:?}",
+    exec,
+    args,
+);
 
     if matches!((script, &exec), (Some(_), Some(_))) {
         MicrosandboxArgs::command()

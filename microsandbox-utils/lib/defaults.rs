@@ -70,7 +70,7 @@ pub const DEFAULT_WORKDIR: &str = "/";
 pub const DEFAULT_SERVER_NAMESPACE: &str = "default";
 
 /// The default localhost address.
-pub const DEFAULT_SERVER_HOST: &str = "127.0.0.1";
+pub const DEFAULT_SERVER_HOST: &str = "0.0.0.0";
 
 /// The default microsandbox-server port.
 pub const DEFAULT_SERVER_PORT: u16 = 5555;

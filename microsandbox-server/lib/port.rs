@@ -30,7 +30,7 @@ use crate::{MicrosandboxServerError, MicrosandboxServerResult};
 //--------------------------------------------------------------------------------------------------
 
 /// The localhost IP address used for all portal connections
-pub const LOCALHOST_IP: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
+pub const LOCALHOST_IP: IpAddr = IpAddr::V4(Ipv4Addr::UNSPECIFIED);
 
 /// Lock to ensure only one thread gets a port at a time
 static PORT_ASSIGNMENT_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
